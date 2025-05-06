@@ -37,6 +37,8 @@ class _MyHomePageState extends State<MyHomePage> {
   final String baseURL = 'https://todos-production-34e1.up.railway.app';
   late Future<List<Tarefa>> listaTarefas = getTarefas();
 
+  var tarefaController = TextEditingController();
+
   Future<List<Tarefa>> getTarefas() async {
     String url = '$baseURL/tarefas';
     final response = await http.get(Uri.parse(url));
@@ -47,6 +49,29 @@ class _MyHomePageState extends State<MyHomePage> {
     } else {
       throw Exception('Erro ao recuperar as tarefas');
     }
+  }
+
+  Future<void> criarTarefa(String titulo) async {
+    String url = '$baseURL/tarefas/';
+
+    final body = jsonEncode({'titulo': titulo, 'concluida': false});
+
+    final response = await http.post(
+      Uri.parse(url),
+      headers: {'Content-type': 'application/json'},
+      body: body,
+    );
+
+    if (response.statusCode == 201) {
+    } else {
+      throw Exception('Erro ao registrar a tarefa');
+    }
+  }
+
+  void postTarefa(String tarefa) async {
+    await criarTarefa(tarefa);
+    listaTarefas = getTarefas();
+    setState(() {});
   }
 
   @override
@@ -91,8 +116,34 @@ class _MyHomePageState extends State<MyHomePage> {
           return Container();
         },
       ),
+
       floatingActionButton: FloatingActionButton(
-        onPressed: getTarefas,
+        onPressed: () {
+          tarefaController.text = '';
+          showDialog(
+            context: context,
+            builder: (BuildContext bc) {
+              return AlertDialog(
+                title: Text('Criar Tarefa'),
+                content: TextField(
+                  controller: tarefaController,
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                    },
+                    child: Text("Cancelar"),
+                  ),
+                  TextButton(onPressed: () async {
+                    postTarefa(tarefaController.text);
+                    Navigator.pop(context);
+                  }, child: Text("Adicionar")),
+                ],
+              );
+            },
+          );
+        },
         tooltip: 'Increment',
         child: const Icon(Icons.add),
       ),
