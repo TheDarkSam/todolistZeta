@@ -51,7 +51,7 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  Future<void> criarTarefa(String titulo) async {
+  Future<void> postTarefa(String titulo) async {
     String url = '$baseURL/tarefas/';
 
     final body = jsonEncode({'titulo': titulo, 'concluida': false});
@@ -68,8 +68,17 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  void postTarefa(String tarefa) async {
-    await criarTarefa(tarefa);
+  Future<void> deleteTarefa(String id) async {
+    String url = '$baseURL/tarefas/$id';
+
+    final response = await http.delete(Uri.parse(url));
+
+    print(response.statusCode);
+    print(response.body);
+  }
+
+  void criarTarefa(String tarefa) async {
+    await postTarefa(tarefa);
     listaTarefas = getTarefas();
     setState(() {});
   }
@@ -100,13 +109,23 @@ class _MyHomePageState extends State<MyHomePage> {
               itemCount: tarefas.length,
               itemBuilder: (context, index) {
                 final tarefa = tarefas[index];
-                return ListTile(
-                  title: Text(tarefa.titulo),
-                  leading: Icon(
-                    tarefa.concluida
-                        ? Icons.check_circle
-                        : Icons.circle_outlined,
-                    color: tarefa.concluida ? Colors.green : Colors.grey,
+                String id = tarefa.id.toString();
+                return Dismissible(
+                  key: Key(id),
+                  background: Container(color: Colors.red),
+                  onDismissed: (direction) async {
+                    await deleteTarefa(id);
+                    listaTarefas = getTarefas();
+                    setState(() {});
+                  },
+                  child: ListTile(
+                    title: Text(tarefa.titulo),
+                    leading: Icon(
+                      tarefa.concluida
+                          ? Icons.check_circle
+                          : Icons.circle_outlined,
+                      color: tarefa.concluida ? Colors.green : Colors.grey,
+                    ),
                   ),
                 );
               },
@@ -125,9 +144,7 @@ class _MyHomePageState extends State<MyHomePage> {
             builder: (BuildContext bc) {
               return AlertDialog(
                 title: Text('Criar Tarefa'),
-                content: TextField(
-                  controller: tarefaController,
-                ),
+                content: TextField(controller: tarefaController),
                 actions: [
                   TextButton(
                     onPressed: () {
@@ -135,10 +152,13 @@ class _MyHomePageState extends State<MyHomePage> {
                     },
                     child: Text("Cancelar"),
                   ),
-                  TextButton(onPressed: () async {
-                    postTarefa(tarefaController.text);
-                    Navigator.pop(context);
-                  }, child: Text("Adicionar")),
+                  TextButton(
+                    onPressed: () async {
+                      criarTarefa(tarefaController.text);
+                      Navigator.pop(context);
+                    },
+                    child: Text("Adicionar"),
+                  ),
                 ],
               );
             },
