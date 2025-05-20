@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:provider/provider.dart';
 
 import 'package:requests/model/tarefa.dart';
+import 'package:requests/service/dark_theme_service.dart';
+import 'package:requests/service/tarefa_service.dart';
+import 'package:requests/viewModel/home_viewModel.dart';
 
 void main() {
   runApp(const MyApp());
@@ -14,12 +17,25 @@ class MyApp extends StatelessWidget {
   // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider<DarkThemeService>(
+          create: (_) => DarkThemeService(),
+        ),
+        ChangeNotifierProvider<HomeViewmodel>(create: (_) => HomeViewmodel()),
+      ],
+      child: Consumer<DarkThemeService>(
+        builder: (_, darkThemeService, child) {
+          return MaterialApp(
+            title: 'Flutter Demo',
+            theme:
+                darkThemeService.darkTheme
+                    ? ThemeData.dark()
+                    : ThemeData.light(),
+            home: const MyHomePage(title: 'Lista de Tarefas'),
+          );
+        },
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
     );
   }
 }
@@ -34,61 +50,32 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  final String baseURL = 'https://todos-production-34e1.up.railway.app';
-  late Future<List<Tarefa>> listaTarefas = getTarefas();
+  final _tarefaService = TarefaService();
+
+  late Future<List<Tarefa>> listaTarefas = _tarefaService.getTarefas();
 
   var tarefaController = TextEditingController();
 
-  Future<List<Tarefa>> getTarefas() async {
-    String url = '$baseURL/tarefas';
-    final response = await http.get(Uri.parse(url));
-
-    if (response.statusCode == 200) {
-      List<dynamic> listaTarefas = jsonDecode(response.body);
-      return listaTarefas.map((tarefa) => Tarefa.fromJson(tarefa)).toList();
-    } else {
-      throw Exception('Erro ao recuperar as tarefas');
-    }
-  }
-
-  Future<void> postTarefa(String titulo) async {
-    String url = '$baseURL/tarefas/';
-
-    final body = jsonEncode({'titulo': titulo, 'concluida': false});
-
-    final response = await http.post(
-      Uri.parse(url),
-      headers: {'Content-type': 'application/json'},
-      body: body,
-    );
-
-    if (response.statusCode == 201) {
-    } else {
-      throw Exception('Erro ao registrar a tarefa');
-    }
-  }
-
-  Future<void> deleteTarefa(String id) async {
-    String url = '$baseURL/tarefas/$id';
-
-    final response = await http.delete(Uri.parse(url));
-
-    print(response.statusCode);
-    print(response.body);
-  }
-
-  void criarTarefa(String tarefa) async {
-    await postTarefa(tarefa);
-    listaTarefas = getTarefas();
-    setState(() {});
-  }
-
   @override
   Widget build(BuildContext context) {
+    // final darkTheme = Provider.of<DarkThemeService>(context);
+
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: Text(widget.title),
+        actions: [
+          Consumer<DarkThemeService>(
+            builder: (_, darkThemeService, widget) {
+              return Switch(
+                value: darkThemeService.darkTheme,
+                onChanged: (value) {
+                  darkThemeService.darkTheme = !darkThemeService.darkTheme;
+                },
+              );
+            },
+          ),
+        ],
       ),
       body: FutureBuilder(
         future: listaTarefas,
@@ -110,21 +97,104 @@ class _MyHomePageState extends State<MyHomePage> {
               itemBuilder: (context, index) {
                 final tarefa = tarefas[index];
                 String id = tarefa.id.toString();
-                return Dismissible(
-                  key: Key(id),
-                  background: Container(color: Colors.red),
-                  onDismissed: (direction) async {
-                    await deleteTarefa(id);
-                    listaTarefas = getTarefas();
-                    setState(() {});
-                  },
+                final parentContext = context;
+                bool concluida;
+                return Slidable(
+                  startActionPane: ActionPane(
+                    motion: DrawerMotion(),
+                    children: [
+                      SlidableAction(
+                        // An action can be bigger than the others.
+                        flex: 2,
+                        onPressed: (context) {
+                          _tarefaService.deleteTarefa(id);
+                          listaTarefas = _tarefaService.getTarefas();
+                          setState(() {});
+                        },
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        icon: Icons.delete,
+                        label: 'Deletar',
+                      ),
+                      SlidableAction(
+                        // An action can be bigger than the others.
+                        flex: 2,
+                        onPressed: (context) {
+                          tarefaController.text = tarefa.titulo;
+                          showDialog(
+                            context: context,
+                            builder: (BuildContext bc) {
+                              return AlertDialog(
+                                title: Text('Editar Tarefa'),
+                                content: TextField(
+                                  controller: tarefaController,
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () {
+                                      Navigator.pop(parentContext);
+                                    },
+                                    child: Text("Cancelar"),
+                                  ),
+                                  TextButton(
+                                    onPressed: () async {
+                                      Navigator.pop(parentContext);
+                                      await _tarefaService.putTarefa(
+                                        id,
+                                        tarefaController.text,
+                                        tarefa.concluida,
+                                      );
+                                      listaTarefas =
+                                          _tarefaService.getTarefas();
+                                      setState(() {});
+                                    },
+                                    child: Text("Editar"),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                        },
+                        backgroundColor: Colors.blue,
+                        foregroundColor: Colors.white,
+                        icon: Icons.edit,
+                        label: 'Editar',
+                      ),
+                    ],
+                  ),
+                  endActionPane: ActionPane(
+                    motion: StretchMotion(),
+                    children: [
+                      SlidableAction(
+                        // An action can be bigger than the others.
+                        flex: 2,
+                        onPressed: (context) {},
+                        backgroundColor: Colors.deepPurple,
+                        foregroundColor: Colors.white,
+                        icon: Icons.star,
+                        label: 'Favoritar',
+                      ),
+                    ],
+                  ),
                   child: ListTile(
                     title: Text(tarefa.titulo),
-                    leading: Icon(
-                      tarefa.concluida
-                          ? Icons.check_circle
-                          : Icons.circle_outlined,
-                      color: tarefa.concluida ? Colors.green : Colors.grey,
+                    leading: InkWell(
+                      onTap: () async {
+                        concluida = !tarefa.concluida;
+                        await _tarefaService.putTarefa(
+                          id,
+                          tarefa.titulo,
+                          concluida,
+                        );
+                        listaTarefas = _tarefaService.getTarefas();
+                        setState(() {});
+                      },
+                      child: Icon(
+                        tarefa.concluida
+                            ? Icons.check_circle
+                            : Icons.circle_outlined,
+                        color: tarefa.concluida ? Colors.green : Colors.grey,
+                      ),
                     ),
                   ),
                 );
@@ -154,8 +224,10 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
                   TextButton(
                     onPressed: () async {
-                      criarTarefa(tarefaController.text);
                       Navigator.pop(context);
+                      _tarefaService.postTarefa(tarefaController.text);
+                      listaTarefas = _tarefaService.getTarefas();
+                      setState(() {});
                     },
                     child: Text("Adicionar"),
                   ),
